@@ -1,0 +1,719 @@
+import React, { useState, useEffect } from 'react';
+import { Music, Share2, Plus, ChevronUp, Users, LogOut, Clock, ArrowLeft } from 'lucide-react';
+import { supabase } from './lib/supabase';
+import Login from './components/Login';
+
+
+
+export default function DJSessionApp() {
+
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState('home');
+
+  const [sessions, setSessions] = useState({});
+  const [userSessions, setUserSessions] = useState([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+
+  const [currentSessionId, setCurrentSessionId] = useState('');
+
+  const [newSongName, setNewSongName] = useState('');
+  const [newArtistName, setNewArtistName] = useState('');
+
+
+
+  useEffect(() => {
+
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load user's sessions
+  useEffect(() => {
+    if (!user) return;
+
+    const loadUserSessions = async () => {
+      setLoadingSessions(true);
+      try {
+        const { data, error } = await supabase
+          .from('sessions')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        setUserSessions(data || []);
+      } catch (error) {
+        console.error('Error loading sessions:', error);
+      } finally {
+        setLoadingSessions(false);
+      }
+    };
+
+    loadUserSessions();
+  }, [user]);
+
+  // Handle URL session parameter and load session data
+  useEffect(() => {
+    if (!user) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session');
+
+    if (sessionId) {
+      setCurrentSessionId(sessionId);
+      setView('session');
+      loadSessionData(sessionId);
+    }
+  }, [user]);
+
+  // Load session data (songs and votes) from Supabase
+  const loadSessionData = async (sessionId) => {
+    if (sessions[sessionId]) return; // Already loaded
+
+    try {
+      // Load songs
+      const { data: songsData, error: songsError } = await supabase
+        .from('songs')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: true });
+
+      if (songsError) throw songsError;
+
+      // Load votes for all songs
+      const songIds = songsData.map(s => s.id);
+      const { data: votesData, error: votesError } = await supabase
+        .from('votes')
+        .select('*')
+        .in('song_id', songIds);
+
+      if (votesError) throw votesError;
+
+      // Combine songs with vote counts
+      const songsWithVotes = songsData.map(song => {
+        const songVotes = votesData.filter(v => v.song_id === song.id);
+        return {
+          id: song.id,
+          name: song.name,
+          artist: song.artist,
+          votes: songVotes.length,
+          voters: songVotes.map(v => v.user_id)
+        };
+      }).sort((a, b) => b.votes - a.votes);
+
+      setSessions(prev => ({
+        ...prev,
+        [sessionId]: { songs: songsWithVotes }
+      }));
+
+      // Set up real-time subscription for this session
+      setupRealtimeSubscription(sessionId);
+    } catch (error) {
+      console.error('Error loading session data:', error);
+      // Fallback to empty session
+      setSessions(prev => ({
+        ...prev,
+        [sessionId]: { songs: [] }
+      }));
+    }
+  };
+
+  // Set up real-time subscriptions for songs and votes
+  const setupRealtimeSubscription = (sessionId) => {
+    // Subscribe to song changes
+    const songsChannel = supabase
+      .channel(`songs:${sessionId}`)
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'songs', filter: `session_id=eq.${sessionId}` },
+        async () => {
+          // Reload songs when they change
+          const { data: songsData } = await supabase
+            .from('songs')
+            .select('*')
+            .eq('session_id', sessionId)
+            .order('created_at', { ascending: true });
+
+          if (songsData) {
+            const songIds = songsData.map(s => s.id);
+            const { data: votesData } = await supabase
+              .from('votes')
+              .select('*')
+              .in('song_id', songIds);
+
+            const songsWithVotes = songsData.map(song => {
+              const songVotes = (votesData || []).filter(v => v.song_id === song.id);
+              return {
+                id: song.id,
+                name: song.name,
+                artist: song.artist,
+                votes: songVotes.length,
+                voters: songVotes.map(v => v.user_id)
+              };
+            }).sort((a, b) => b.votes - a.votes);
+
+            setSessions(prev => ({
+              ...prev,
+              [sessionId]: { songs: songsWithVotes }
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    // Subscribe to vote changes
+    const votesChannel = supabase
+      .channel(`votes:${sessionId}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'votes' },
+        async () => {
+          // Reload votes when they change
+          const { data: songsData } = await supabase
+            .from('songs')
+            .select('*')
+            .eq('session_id', sessionId);
+
+          if (songsData) {
+            const songIds = songsData.map(s => s.id);
+            const { data: votesData } = await supabase
+              .from('votes')
+              .select('*')
+              .in('song_id', songIds);
+
+            const songsWithVotes = songsData.map(song => {
+              const songVotes = (votesData || []).filter(v => v.song_id === song.id);
+              return {
+                id: song.id,
+                name: song.name,
+                artist: song.artist,
+                votes: songVotes.length,
+                voters: songVotes.map(v => v.user_id)
+              };
+            }).sort((a, b) => b.votes - a.votes);
+
+            setSessions(prev => ({
+              ...prev,
+              [sessionId]: { songs: songsWithVotes }
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(songsChannel);
+      supabase.removeChannel(votesChannel);
+    };
+  };
+
+
+
+  const createSession = async () => {
+    if (!user) return;
+
+    const sessionId = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    try {
+      // Save session to Supabase
+      const { error } = await supabase
+        .from('sessions')
+        .insert({
+          user_id: user.id,
+          session_id: sessionId
+        });
+
+      if (error) throw error;
+
+      // Update local state
+      setSessions(prev => ({
+        ...prev,
+        [sessionId]: { songs: [] }
+      }));
+
+      setCurrentSessionId(sessionId);
+      setView('session');
+
+      // Reload user sessions
+      const { data } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      
+      if (data) setUserSessions(data);
+
+      // Set up real-time subscription
+      setupRealtimeSubscription(sessionId);
+    } catch (error) {
+      console.error('Error creating session:', error);
+      alert('Failed to create session. Please try again.');
+    }
+  };
+
+
+
+  const getSessionLink = () => {
+
+    return `${window.location.origin}${window.location.pathname}?session=${currentSessionId}`;
+
+  };
+
+
+
+  const copyLink = () => {
+
+    navigator.clipboard.writeText(getSessionLink());
+
+    alert('Link copied to clipboard!');
+
+  };
+
+
+
+  const addSong = async () => {
+    if (!newSongName.trim() || !currentSessionId) return;
+
+    try {
+      // Save song to Supabase
+      const { data, error } = await supabase
+        .from('songs')
+        .insert({
+          session_id: currentSessionId,
+          name: newSongName.trim(),
+          artist: newArtistName.trim() || null,
+          created_by: user?.id || null
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update local state (real-time will also update this, but this provides instant feedback)
+      setSessions(prev => ({
+        ...prev,
+        [currentSessionId]: {
+          songs: [
+            ...(prev[currentSessionId]?.songs || []),
+            {
+              id: data.id,
+              name: data.name,
+              artist: data.artist,
+              votes: 0,
+              voters: []
+            }
+          ]
+        }
+      }));
+
+      setNewSongName('');
+      setNewArtistName('');
+    } catch (error) {
+      console.error('Error adding song:', error);
+      alert('Failed to add song. Please try again.');
+    }
+  };
+
+
+
+  const upvoteSong = async (songId) => {
+    if (!user || !currentSessionId) return;
+
+    const currentSession = sessions[currentSessionId];
+    const song = currentSession?.songs.find(s => s.id === songId);
+    
+    if (!song || song.voters.includes(user.id)) return;
+
+    try {
+      // Save vote to Supabase
+      const { error } = await supabase
+        .from('votes')
+        .insert({
+          song_id: songId,
+          user_id: user.id
+        });
+
+      if (error) {
+        // If it's a duplicate vote error, that's okay
+        if (error.code !== '23505') throw error;
+      }
+
+      // Update local state (real-time will also update this)
+      setSessions(prev => {
+        const session = prev[currentSessionId];
+        const updatedSongs = session.songs.map(s => {
+          if (s.id === songId) {
+            return {
+              ...s,
+              votes: s.votes + 1,
+              voters: [...s.voters, user.id]
+            };
+          }
+          return s;
+        });
+
+        return {
+          ...prev,
+          [currentSessionId]: {
+            songs: updatedSongs.sort((a, b) => b.votes - a.votes)
+          }
+        };
+      });
+    } catch (error) {
+      console.error('Error upvoting song:', error);
+      alert('Failed to vote. Please try again.');
+    }
+  };
+
+
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setView('home');
+    setSessions({});
+    setCurrentSessionId('');
+    setUserSessions([]);
+  };
+
+  const openSession = (sessionId) => {
+    setCurrentSessionId(sessionId);
+    setView('session');
+    window.history.pushState({}, '', `?session=${sessionId}`);
+    loadSessionData(sessionId);
+  };
+
+  const goHome = () => {
+    setView('home');
+    setCurrentSessionId('');
+    window.history.pushState({}, '', window.location.pathname);
+  };
+
+  const currentSession = sessions[currentSessionId];
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    );
+  }
+
+  // Show login screen if not authenticated
+  if (!user) {
+    return <Login onLogin={setUser} />;
+  }
+
+  if (view === 'home') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900 p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-8">
+            <div className="mb-8 flex justify-center">
+              <Music className="w-24 h-24 text-white" />
+            </div>
+            <h1 className="text-5xl font-bold text-white mb-4">DJ Session</h1>
+            <p className="text-gray-300 text-xl mb-8">Create a session and let your crowd choose the vibe</p>
+          </div>
+
+          <div className="flex flex-col items-center gap-6 mb-8">
+            <button
+              onClick={createSession}
+              className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all transform hover:scale-105 shadow-lg"
+            >
+              Create DJ Session
+            </button>
+
+            <button
+              onClick={handleLogout}
+              className="text-gray-400 hover:text-white text-sm flex items-center gap-2 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
+          </div>
+
+          {/* Your Sessions Section */}
+          <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-6 shadow-2xl">
+            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+              <Clock className="w-6 h-6" />
+              Your Sessions
+            </h2>
+
+            {loadingSessions ? (
+              <p className="text-purple-200 text-center py-8">Loading sessions...</p>
+            ) : userSessions.length === 0 ? (
+              <p className="text-purple-200 text-center py-8">You haven't created any sessions yet. Create one to get started!</p>
+            ) : (
+              <div className="space-y-3">
+                {userSessions.map((session) => {
+                  const sessionData = sessions[session.session_id];
+                  const songCount = sessionData?.songs?.length || 0;
+                  
+                  return (
+                    <div
+                      key={session.id}
+                      className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 hover:bg-opacity-20 transition-all cursor-pointer"
+                      onClick={() => openSession(session.session_id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 flex-1">
+                          <div className="bg-purple-500 bg-opacity-30 rounded-lg p-3">
+                            <Music className="w-6 h-6 text-purple-300" />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-white font-semibold text-lg">Session: {session.session_id}</h3>
+                            <p className="text-purple-200 text-sm flex items-center gap-2 mt-1">
+                              <Users className="w-4 h-4" />
+                              {songCount} {songCount === 1 ? 'request' : 'requests'}
+                            </p>
+                            <p className="text-purple-300 text-xs mt-1">
+                              Created {new Date(session.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openSession(session.session_id);
+                          }}
+                          className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg transition-all"
+                        >
+                          Open
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+
+
+  return (
+
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900 p-4">
+
+      <div className="max-w-3xl mx-auto">
+
+        <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-6 mb-6 shadow-2xl">
+
+          <div className="flex items-center justify-between mb-4">
+
+            <div className="flex items-center gap-3">
+
+              <button
+                onClick={goHome}
+                className="bg-white bg-opacity-10 hover:bg-opacity-20 text-white p-2 rounded-lg transition-all"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+
+              <Music className="w-8 h-8 text-purple-300" />
+
+              <div>
+
+                <h2 className="text-2xl font-bold text-white">Session: {currentSessionId}</h2>
+
+                <p className="text-purple-200 text-sm flex items-center gap-1">
+
+                  <Users className="w-4 h-4" />
+
+                  {currentSession?.songs.length || 0} requests
+
+                </p>
+
+              </div>
+
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+
+                onClick={copyLink}
+
+                className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-all"
+
+              >
+
+                <Share2 className="w-4 h-4" />
+
+                Share Link
+
+              </button>
+
+              <button
+
+                onClick={handleLogout}
+
+                className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-all"
+
+              >
+
+                <LogOut className="w-4 h-4" />
+
+                Sign Out
+
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+
+        <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-6 mb-6 shadow-2xl">
+
+          <h3 className="text-xl font-bold text-white mb-4">Request a Song</h3>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-2">
+              <input
+
+                type="text"
+
+                value={newSongName}
+
+                onChange={(e) => setNewSongName(e.target.value)}
+
+                onKeyPress={(e) => e.key === 'Enter' && addSong()}
+
+                placeholder="Song Name"
+
+                className="flex-1 px-4 py-3 rounded-lg bg-white bg-opacity-20 text-white placeholder-purple-200 border border-purple-300 border-opacity-30 focus:outline-none focus:ring-2 focus:ring-purple-400"
+
+              />
+            </div>
+            <div className="flex gap-2">
+              <input
+
+                type="text"
+
+                value={newArtistName}
+
+                onChange={(e) => setNewArtistName(e.target.value)}
+
+                onKeyPress={(e) => e.key === 'Enter' && addSong()}
+
+                placeholder="Artist Name"
+
+                className="flex-1 px-4 py-3 rounded-lg bg-white bg-opacity-20 text-white placeholder-purple-200 border border-purple-300 border-opacity-30 focus:outline-none focus:ring-2 focus:ring-purple-400"
+
+              />
+
+              <button
+
+                onClick={addSong}
+
+                className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2 transition-all"
+
+              >
+
+                <Plus className="w-5 h-5" />
+
+                Add
+
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+
+        <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-6 shadow-2xl">
+
+          <h3 className="text-xl font-bold text-white mb-4">Song Requests</h3>
+
+          {!currentSession?.songs || currentSession.songs.length === 0 ? (
+
+            <p className="text-purple-200 text-center py-8">No songs requested yet. Be the first!</p>
+
+          ) : (
+
+            <div className="space-y-3">
+
+              {currentSession.songs.map((song, index) => (
+
+                <div
+
+                  key={song.id}
+
+                  className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 flex items-center justify-between hover:bg-opacity-20 transition-all"
+
+                >
+
+                  <div className="flex items-center gap-4 flex-1">
+
+                    <div className="text-purple-300 font-bold text-lg w-8">#{index + 1}</div>
+
+                    <div className="flex-1">
+
+                      <p className="text-white font-semibold">{song.name}</p>
+                      {song.artist && (
+                        <p className="text-purple-200 text-sm">{song.artist}</p>
+                      )}
+
+                    </div>
+
+                  </div>
+
+                  <button
+
+                    onClick={() => upvoteSong(song.id)}
+
+                    disabled={song.voters.includes(user?.id)}
+
+                    className={`font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-all ${
+                      song.voters.includes(user?.id)
+                        ? 'bg-gray-500 cursor-not-allowed opacity-50'
+                        : 'bg-purple-500 hover:bg-purple-600 transform hover:scale-105'
+                    } text-white`}
+
+                  >
+
+                    <ChevronUp className="w-5 h-5" />
+
+                    <span>{song.votes}</span>
+
+                  </button>
+
+                </div>
+
+              ))}
+
+            </div>
+
+          )}
+
+        </div>
+
+      </div>
+
+    </div>
+
+  );
+
+}
+
