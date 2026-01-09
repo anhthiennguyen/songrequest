@@ -654,6 +654,7 @@ export default function DJSessionApp() {
       setSessions(prev => ({
         ...prev,
         [currentSessionId]: {
+          ...prev[currentSessionId], // Preserve ownerId, name, and other session properties
           songs: [
             ...(prev[currentSessionId]?.songs || []),
             {
@@ -1299,7 +1300,7 @@ export default function DJSessionApp() {
 
 
         <p className="text-center text-purple-100 text-sm mb-4">
-          Upvote the songs you want to hear the most so they rise to the top.
+         Not all songs will be played. Upvote the songs you want to hear the most so they rise to the top.
         </p>
 
         <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-6 shadow-2xl">
