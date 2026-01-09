@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Music, Share2, Plus, ChevronUp, Users, LogOut, Clock, ArrowLeft, Trash2, Globe, Edit2, Check, X } from 'lucide-react';
+import { Disc3, Share2, Plus, ThumbsUp, Users, LogOut, Clock, ArrowLeft, Trash2, Globe, Edit2, Check, X } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import Login from './components/Login';
 
@@ -908,13 +908,13 @@ export default function DJSessionApp() {
 
   if (view === 'home') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900 p-3 sm:p-4 pb-6">
+      <div className="min-h-screen bg-gradient-to-br from-purple-950 via-indigo-950 to-blue-950 p-3 sm:p-4 pb-6">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-6 sm:mb-8">
             <div className="mb-4 sm:mb-8 flex justify-center">
-              <Music className="w-16 h-16 sm:w-24 sm:h-24 text-white" />
+              <Disc3 className="w-16 h-16 sm:w-24 sm:h-24 text-white" />
             </div>
-            <h1 className="text-3xl sm:text-5xl font-bold text-white mb-2 sm:mb-4">DJ Session</h1>
+            <h1 className="text-3xl sm:text-5xl font-bold text-white mb-2 sm:mb-4">Song Request</h1>
             <p className="text-gray-300 text-base sm:text-xl mb-6 sm:mb-8 px-2">Create a session and let your crowd choose the vibe</p>
           </div>
 
@@ -971,7 +971,7 @@ export default function DJSessionApp() {
                       <div className="flex items-center justify-between flex-wrap gap-3">
                         <div className="flex items-center gap-4 flex-1 min-w-0">
                           <div className="bg-purple-500 bg-opacity-30 rounded-lg p-3 flex-shrink-0">
-                            <Music className="w-6 h-6 text-purple-300" />
+                            <Disc3 className="w-6 h-6 text-purple-300" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <h3 className="text-white font-semibold text-lg truncate">
@@ -1090,7 +1090,7 @@ export default function DJSessionApp() {
 
   return (
 
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-purple-950 via-indigo-950 to-blue-950 p-4">
 
       <div className="max-w-3xl mx-auto">
 
@@ -1107,7 +1107,7 @@ export default function DJSessionApp() {
                 <ArrowLeft className="w-5 h-5" />
               </button>
 
-              <Music className="w-8 h-8 text-purple-300" />
+              <Disc3 className="w-8 h-8 text-purple-300" />
 
               <div className="flex-1">
                 {editingSessionName && currentSession?.ownerId === user?.id ? (
@@ -1269,6 +1269,9 @@ export default function DJSessionApp() {
         </div>
 
 
+        <p className="text-center text-purple-100 text-sm mb-4">
+          Upvote the songs you want to hear the most so they rise to the top.
+        </p>
 
         <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-6 shadow-2xl">
 
@@ -1331,7 +1334,7 @@ export default function DJSessionApp() {
 
                     >
 
-                      <ChevronUp className="w-5 h-5" />
+                      <ThumbsUp className="w-5 h-5" />
 
                       <span>{song.votes}</span>
 

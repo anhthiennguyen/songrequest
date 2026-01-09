@@ -70,13 +70,13 @@ export default function Login({ onLogin }) {
   // Main Discord login page
   if (!showRegularLogin) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-purple-950 via-indigo-950 to-blue-950 flex items-center justify-center p-4">
         <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl w-full max-w-md">
           <div className="text-center mb-8">
             <div className="mb-4 flex justify-center">
               <Music className="w-16 h-16 text-purple-300" />
             </div>
-            <h1 className="text-4xl font-bold text-white mb-2">DJ Session</h1>
+            <h1 className="text-4xl font-bold text-white mb-2">Song Request</h1>
             <p className="text-purple-200">
               Sign in to continue
             </p>
@@ -120,13 +120,13 @@ export default function Login({ onLogin }) {
 
   // Regular email/password login form
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-purple-950 via-indigo-950 to-blue-950 flex items-center justify-center p-4">
       <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl w-full max-w-md">
         <div className="text-center mb-8">
           <div className="mb-4 flex justify-center">
             <Music className="w-16 h-16 text-purple-300" />
           </div>
-          <h1 className="text-4xl font-bold text-white mb-2">DJ Session</h1>
+          <h1 className="text-4xl font-bold text-white mb-2">Song Request</h1>
           <p className="text-purple-200">
             {isSignUp ? 'Create your account' : 'Sign in to continue'}
           </p>
