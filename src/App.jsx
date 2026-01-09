@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Music, Share2, Plus, ChevronUp, Users, LogOut, Clock, ArrowLeft, Trash2 } from 'lucide-react';
+import { Music, Share2, Plus, ChevronUp, Users, LogOut, Clock, ArrowLeft, Trash2, Globe } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import Login from './components/Login';
 
@@ -13,7 +13,9 @@ export default function DJSessionApp() {
 
   const [sessions, setSessions] = useState({});
   const [userSessions, setUserSessions] = useState([]);
+  const [otherSessions, setOtherSessions] = useState([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
+  const [loadingOtherSessions, setLoadingOtherSessions] = useState(false);
 
   const [currentSessionId, setCurrentSessionId] = useState('');
 
@@ -40,6 +42,18 @@ export default function DJSessionApp() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Store original URL when user is not authenticated
+  useEffect(() => {
+    if (!user && !loading) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionId = urlParams.get('session');
+      if (sessionId) {
+        // Store the original URL to redirect back after login
+        sessionStorage.setItem('redirectAfterLogin', window.location.search);
+      }
+    }
+  }, [user, loading]);
+
   // Load user's sessions
   useEffect(() => {
     if (!user) return;
@@ -65,9 +79,222 @@ export default function DJSessionApp() {
     loadUserSessions();
   }, [user]);
 
+  // Load sessions user has visited (but didn't create)
+  useEffect(() => {
+    if (!user) return;
+
+    const loadOtherSessions = async () => {
+      setLoadingOtherSessions(true);
+      try {
+        // Get visited sessions from localStorage
+        const visitedKey = `visited_sessions_${user.id}`;
+        const visitedSessionIds = JSON.parse(localStorage.getItem(visitedKey) || '[]');
+
+        // Get session IDs where user has added songs
+        const { data: songsData, error: songsError } = await supabase
+          .from('songs')
+          .select('session_id')
+          .eq('created_by', user.id)
+          .not('session_id', 'is', null)
+          .not('created_by', 'is', null);
+
+        if (songsError) throw songsError;
+
+        // Get session IDs where user has voted
+        const { data: votesData, error: votesError } = await supabase
+          .from('votes')
+          .select('song_id')
+          .eq('user_id', user.id);
+
+        if (votesError) throw votesError;
+
+        // Get song IDs from votes, then get their session IDs
+        const songIds = votesData && votesData.length > 0 ? votesData.map(v => v.song_id) : [];
+        let votedSessionIds = [];
+        if (songIds.length > 0) {
+          const { data: votedSongsData, error: votedSongsError } = await supabase
+            .from('songs')
+            .select('session_id')
+            .in('id', songIds)
+            .not('session_id', 'is', null);
+
+          if (votedSongsError) throw votedSongsError;
+          votedSessionIds = (votedSongsData || []).map(s => s.session_id);
+        }
+
+        // Combine visited sessions, sessions where user added songs, and sessions where user voted
+        const songsSessionIds = (songsData || []).filter(s => s && s.session_id).map(s => s.session_id);
+        const allSessionIds = [...visitedSessionIds, ...songsSessionIds, ...votedSessionIds].filter(id => id);
+        
+        // Get unique session IDs
+        const allUniqueSessionIds = [...new Set(allSessionIds)];
+        
+        // Get user's own session IDs to exclude
+        const { data: ownSessions } = await supabase
+          .from('sessions')
+          .select('session_id')
+          .eq('user_id', user.id);
+
+        const ownSessionIds = (ownSessions || []).map(s => s.session_id);
+
+        // Filter out sessions user owns
+        const otherSessionIds = allUniqueSessionIds.filter(
+          id => !ownSessionIds.includes(id)
+        );
+
+        if (otherSessionIds.length === 0) {
+          setOtherSessions([]);
+          setLoadingOtherSessions(false);
+          return;
+        }
+
+        // Get session details for these IDs
+        const { data: sessionsData, error: sessionsError } = await supabase
+          .from('sessions')
+          .select('*')
+          .in('session_id', otherSessionIds)
+          .order('created_at', { ascending: false });
+
+        if (sessionsError) throw sessionsError;
+
+        // Load song counts for each session
+        const sessionsWithCounts = await Promise.all(
+          (sessionsData || []).map(async (session) => {
+            const { count } = await supabase
+              .from('songs')
+              .select('*', { count: 'exact', head: true })
+              .eq('session_id', session.session_id);
+
+            return {
+              ...session,
+              songCount: count || 0
+            };
+          })
+        );
+
+        setOtherSessions(sessionsWithCounts);
+      } catch (error) {
+        console.error('Error loading other sessions:', error);
+        setOtherSessions([]);
+      } finally {
+        setLoadingOtherSessions(false);
+      }
+    };
+
+    loadOtherSessions();
+  }, [user]);
+
+  // Reload other sessions when returning to home view
+  useEffect(() => {
+    if (!user || view !== 'home') return;
+
+    const loadOtherSessions = async () => {
+      try {
+        // Get visited sessions from localStorage
+        const visitedKey = `visited_sessions_${user.id}`;
+        const visitedSessionIds = JSON.parse(localStorage.getItem(visitedKey) || '[]');
+
+        // Get session IDs where user has added songs
+        const { data: songsData, error: songsError } = await supabase
+          .from('songs')
+          .select('session_id')
+          .eq('created_by', user.id)
+          .not('session_id', 'is', null)
+          .not('created_by', 'is', null);
+
+        if (songsError) throw songsError;
+
+        // Get session IDs where user has voted
+        const { data: votesData, error: votesError } = await supabase
+          .from('votes')
+          .select('song_id')
+          .eq('user_id', user.id);
+
+        if (votesError) throw votesError;
+
+        // Get song IDs from votes, then get their session IDs
+        const songIds = votesData && votesData.length > 0 ? votesData.map(v => v.song_id) : [];
+        let votedSessionIds = [];
+        if (songIds.length > 0) {
+          const { data: votedSongsData, error: votedSongsError } = await supabase
+            .from('songs')
+            .select('session_id')
+            .in('id', songIds)
+            .not('session_id', 'is', null);
+
+          if (votedSongsError) throw votedSongsError;
+          votedSessionIds = (votedSongsData || []).map(s => s.session_id);
+        }
+
+        // Combine visited sessions, sessions where user added songs, and sessions where user voted
+        const songsSessionIds = (songsData || []).filter(s => s && s.session_id).map(s => s.session_id);
+        const allSessionIds = [...visitedSessionIds, ...songsSessionIds, ...votedSessionIds].filter(id => id);
+        
+        // Get unique session IDs
+        const allUniqueSessionIds = [...new Set(allSessionIds)];
+
+        // Get user's own session IDs to exclude
+        const { data: ownSessions } = await supabase
+          .from('sessions')
+          .select('session_id')
+          .eq('user_id', user.id);
+
+        const ownSessionIds = (ownSessions || []).map(s => s.session_id);
+
+        // Filter out sessions user owns
+        const otherSessionIds = allUniqueSessionIds.filter(
+          id => !ownSessionIds.includes(id)
+        );
+
+        if (otherSessionIds.length === 0) {
+          setOtherSessions([]);
+          return;
+        }
+
+        // Get session details for these IDs
+        const { data: sessionsData, error: sessionsError } = await supabase
+          .from('sessions')
+          .select('*')
+          .in('session_id', otherSessionIds)
+          .order('created_at', { ascending: false });
+
+        if (sessionsError) throw sessionsError;
+
+        // Load song counts for each session
+        const sessionsWithCounts = await Promise.all(
+          (sessionsData || []).map(async (session) => {
+            const { count } = await supabase
+              .from('songs')
+              .select('*', { count: 'exact', head: true })
+              .eq('session_id', session.session_id);
+
+            return {
+              ...session,
+              songCount: count || 0
+            };
+          })
+        );
+
+        setOtherSessions(sessionsWithCounts);
+      } catch (error) {
+        console.error('Error loading other sessions:', error);
+      }
+    };
+
+    loadOtherSessions();
+  }, [view, user]);
+
   // Handle URL session parameter and load session data
   useEffect(() => {
     if (!user) return;
+
+    // Check if there's a stored redirect URL from before login
+    const storedRedirect = sessionStorage.getItem('redirectAfterLogin');
+    if (storedRedirect) {
+      sessionStorage.removeItem('redirectAfterLogin');
+      // Restore the URL with the query parameters
+      window.history.replaceState({}, '', window.location.pathname + storedRedirect);
+    }
 
     const urlParams = new URLSearchParams(window.location.search);
     const sessionId = urlParams.get('session');
@@ -82,6 +309,20 @@ export default function DJSessionApp() {
   // Load session data (songs and votes) from Supabase
   const loadSessionData = async (sessionId) => {
     if (sessions[sessionId]?.ownerId) return; // Already loaded with owner info
+
+    // Track visited session in localStorage
+    if (user) {
+      try {
+        const visitedKey = `visited_sessions_${user.id}`;
+        const visitedSessions = JSON.parse(localStorage.getItem(visitedKey) || '[]');
+        if (!visitedSessions.includes(sessionId)) {
+          visitedSessions.push(sessionId);
+          localStorage.setItem(visitedKey, JSON.stringify(visitedSessions));
+        }
+      } catch (e) {
+        console.error('Error saving visited session:', e);
+      }
+    }
 
     try {
       // Load session info to get owner
@@ -271,6 +512,9 @@ export default function DJSessionApp() {
         .order('created_at', { ascending: false });
       
       if (data) setUserSessions(data);
+      
+      // Trigger reload of other sessions (in case user adds song to this new session)
+      // The useEffect will handle reloading
 
       // Set up real-time subscription
       setupRealtimeSubscription(sessionId);
@@ -520,6 +764,7 @@ export default function DJSessionApp() {
     setSessions({});
     setCurrentSessionId('');
     setUserSessions([]);
+    setOtherSessions([]);
   };
 
   const openSession = (sessionId) => {
@@ -581,7 +826,7 @@ export default function DJSessionApp() {
           </div>
 
           {/* Your Sessions Section */}
-          <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-6 shadow-2xl">
+          <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-6 shadow-2xl mb-6">
             <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
               <Clock className="w-6 h-6" />
               Your Sessions
@@ -629,15 +874,63 @@ export default function DJSessionApp() {
                           >
                             Open
                           </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Other Sessions Section */}
+          <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-6 shadow-2xl">
+            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+              <Globe className="w-6 h-6" />
+              Other Sessions
+            </h2>
+
+            {loadingOtherSessions ? (
+              <p className="text-purple-200 text-center py-8">Loading sessions...</p>
+            ) : otherSessions.length === 0 ? (
+              <p className="text-purple-200 text-center py-8">You haven't participated in any other sessions yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {otherSessions.map((session) => {
+                  const sessionData = sessions[session.session_id];
+                  const songCount = sessionData?.songs?.length || session.songCount || 0;
+                  
+                  return (
+                    <div
+                      key={session.id}
+                      className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 hover:bg-opacity-20 transition-all cursor-pointer"
+                      onClick={() => openSession(session.session_id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 flex-1">
+                          <div className="bg-blue-500 bg-opacity-30 rounded-lg p-3">
+                            <Globe className="w-6 h-6 text-blue-300" />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-white font-semibold text-lg">Session: {session.session_id}</h3>
+                            <p className="text-purple-200 text-sm flex items-center gap-2 mt-1">
+                              <Users className="w-4 h-4" />
+                              {songCount} {songCount === 1 ? 'request' : 'requests'}
+                            </p>
+                            <p className="text-purple-300 text-xs mt-1">
+                              Created {new Date(session.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              deleteSession(session.session_id);
+                              openSession(session.session_id);
                             }}
-                            className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-3 rounded-lg transition-all flex items-center gap-1"
-                            title="Delete session"
+                            className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-all"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            Open
                           </button>
                         </div>
                       </div>
