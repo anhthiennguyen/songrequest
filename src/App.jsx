@@ -363,7 +363,8 @@ export default function DJSessionApp() {
           name: song.name,
           artist: song.artist,
           votes: songVotes.length,
-          voters: songVotes.map(v => v.user_id)
+          voters: songVotes.map(v => v.user_id),
+          created_by: song.created_by
         };
       }).sort((a, b) => b.votes - a.votes);
 
@@ -417,7 +418,8 @@ export default function DJSessionApp() {
                 name: song.name,
                 artist: song.artist,
                 votes: songVotes.length,
-                voters: songVotes.map(v => v.user_id)
+                voters: songVotes.map(v => v.user_id),
+                created_by: song.created_by
               };
             }).sort((a, b) => b.votes - a.votes);
 
@@ -459,7 +461,8 @@ export default function DJSessionApp() {
                 name: song.name,
                 artist: song.artist,
                 votes: songVotes.length,
-                voters: songVotes.map(v => v.user_id)
+                voters: songVotes.map(v => v.user_id),
+                created_by: song.created_by
               };
             }).sort((a, b) => b.votes - a.votes);
 
@@ -658,7 +661,8 @@ export default function DJSessionApp() {
               name: data.name,
               artist: data.artist,
               votes: 0,
-              voters: []
+              voters: [],
+              created_by: data.created_by
             }
           ]
         }
@@ -681,6 +685,12 @@ export default function DJSessionApp() {
     const song = currentSession?.songs.find(s => s.id === songId);
     
     if (!song) return;
+
+    // Prevent users from upvoting their own songs
+    if (song.created_by === user.id) {
+      alert('You cannot upvote your own song request.');
+      return;
+    }
 
     const hasVoted = song.voters.includes(user.id);
 
