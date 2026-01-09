@@ -908,29 +908,29 @@ export default function DJSessionApp() {
 
   if (view === 'home') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900 p-4">
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900 p-3 sm:p-4 pb-6">
         <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-8">
-            <div className="mb-8 flex justify-center">
-              <Music className="w-24 h-24 text-white" />
+          <div className="text-center mb-6 sm:mb-8">
+            <div className="mb-4 sm:mb-8 flex justify-center">
+              <Music className="w-16 h-16 sm:w-24 sm:h-24 text-white" />
             </div>
-            <h1 className="text-5xl font-bold text-white mb-4">DJ Session</h1>
-            <p className="text-gray-300 text-xl mb-8">Create a session and let your crowd choose the vibe</p>
+            <h1 className="text-3xl sm:text-5xl font-bold text-white mb-2 sm:mb-4">DJ Session</h1>
+            <p className="text-gray-300 text-base sm:text-xl mb-6 sm:mb-8 px-2">Create a session and let your crowd choose the vibe</p>
           </div>
 
-          <div className="flex flex-col items-center gap-6 mb-8">
-            <div className="w-full max-w-md">
+          <div className="flex flex-col items-center gap-4 sm:gap-6 mb-6 sm:mb-8">
+            <div className="w-full max-w-md px-2">
               <input
                 type="text"
                 value={newSessionName}
                 onChange={(e) => setNewSessionName(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && createSession()}
                 placeholder="Session Name (optional)"
-                className="w-full px-4 py-3 rounded-lg bg-white bg-opacity-20 text-white placeholder-purple-200 border border-purple-300 border-opacity-30 focus:outline-none focus:ring-2 focus:ring-purple-400 mb-3"
+                className="w-full px-4 py-3 sm:py-3 rounded-lg bg-white bg-opacity-20 text-white placeholder-purple-200 border border-purple-300 border-opacity-30 focus:outline-none focus:ring-2 focus:ring-purple-400 mb-3 text-base"
               />
               <button
                 onClick={createSession}
-                className="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all transform hover:scale-105 shadow-lg"
+                className="w-full bg-purple-500 hover:bg-purple-600 active:bg-purple-700 text-white font-bold py-3 sm:py-4 px-6 sm:px-8 rounded-full text-base sm:text-lg transition-all transform active:scale-95 shadow-lg touch-manipulation"
               >
                 Create DJ Session
               </button>
@@ -938,7 +938,7 @@ export default function DJSessionApp() {
 
             <button
               onClick={handleLogout}
-              className="text-gray-400 hover:text-white text-sm flex items-center gap-2 transition-colors"
+              className="text-gray-400 hover:text-white active:text-white text-sm flex items-center gap-2 transition-colors touch-manipulation py-2"
             >
               <LogOut className="w-4 h-4" />
               Sign Out
@@ -968,20 +968,20 @@ export default function DJSessionApp() {
                       className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 hover:bg-opacity-20 transition-all cursor-pointer"
                       onClick={() => openSession(session.session_id)}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4 flex-1">
-                          <div className="bg-purple-500 bg-opacity-30 rounded-lg p-3">
+                      <div className="flex items-center justify-between flex-wrap gap-3">
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                          <div className="bg-purple-500 bg-opacity-30 rounded-lg p-3 flex-shrink-0">
                             <Music className="w-6 h-6 text-purple-300" />
                           </div>
-                          <div className="flex-1">
-                            <h3 className="text-white font-semibold text-lg">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-white font-semibold text-lg truncate">
                               {session.name || `Session ${session.session_id}`}
                             </h3>
                             <p className="text-purple-300 text-xs">
                               ID: {session.session_id}
                             </p>
                             <p className="text-purple-200 text-sm flex items-center gap-2 mt-1">
-                              <Users className="w-4 h-4" />
+                              <Users className="w-4 h-4 flex-shrink-0" />
                               {songCount} {songCount === 1 ? 'request' : 'requests'}
                             </p>
                             <p className="text-purple-300 text-xs mt-1">
@@ -989,13 +989,24 @@ export default function DJSessionApp() {
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteSession(session.session_id);
+                            }}
+                            className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-all flex items-center gap-1 sm:gap-2"
+                            title="Delete session"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            <span className="hidden sm:inline">Delete</span>
+                          </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               openSession(session.session_id);
                             }}
-                            className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg transition-all"
+                            className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-all"
                           >
                             Open
                           </button>
@@ -1161,17 +1172,7 @@ export default function DJSessionApp() {
 
             </div>
 
-            <div className="flex items-center gap-2">
-              {currentSession?.ownerId === user?.id && (
-                <button
-                  onClick={() => deleteSession(currentSessionId)}
-                  className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-all"
-                  title="Delete session"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete Session
-                </button>
-              )}
+            <div className="flex items-center gap-2 flex-wrap">
               <button
 
                 onClick={copyLink}
