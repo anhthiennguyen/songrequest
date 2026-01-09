@@ -13,6 +13,7 @@ CREATE TABLE sessions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   session_id TEXT NOT NULL UNIQUE,
+  name TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
@@ -154,9 +155,18 @@ CREATE POLICY "Users can delete their own votes"
 3. Run each CREATE TABLE statement above in order (sessions first, then songs, then votes)
 4. The RLS policies will ensure data security while allowing public read access to sessions and songs
 
+## Migration: Adding Name Field to Sessions
+
+If you already have a `sessions` table, you can add the `name` field with:
+
+```sql
+ALTER TABLE sessions ADD COLUMN name TEXT;
+```
+
 ## Notes
 
 - The `session_id` field in the `sessions` table is the short random ID (e.g., "ABC123") used in URLs
+- The `name` field is optional and allows users to give their sessions a friendly name
 - The `songs` table references `sessions` by `session_id` (not the UUID `id`) for easier lookups
 - The `votes` table has a unique constraint on `(song_id, user_id)` to prevent duplicate votes
 - RLS policies allow public read access to sessions and songs (for sharing), but only authenticated users can create/update

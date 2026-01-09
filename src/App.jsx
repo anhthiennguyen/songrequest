@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Music, Share2, Plus, ChevronUp, Users, LogOut, Clock, ArrowLeft, Trash2, Globe } from 'lucide-react';
+import { Music, Share2, Plus, ChevronUp, Users, LogOut, Clock, ArrowLeft, Trash2, Globe, Edit2, Check, X } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import Login from './components/Login';
 
@@ -19,8 +19,11 @@ export default function DJSessionApp() {
 
   const [currentSessionId, setCurrentSessionId] = useState('');
 
+  const [newSessionName, setNewSessionName] = useState('');
   const [newSongName, setNewSongName] = useState('');
   const [newArtistName, setNewArtistName] = useState('');
+  const [editingSessionName, setEditingSessionName] = useState(false);
+  const [editingSessionNameValue, setEditingSessionNameValue] = useState('');
 
 
 
@@ -325,10 +328,10 @@ export default function DJSessionApp() {
     }
 
     try {
-      // Load session info to get owner
+      // Load session info to get owner and name
       const { data: sessionInfo, error: sessionError } = await supabase
         .from('sessions')
-        .select('user_id')
+        .select('user_id, name')
         .eq('session_id', sessionId)
         .single();
 
@@ -368,7 +371,8 @@ export default function DJSessionApp() {
         ...prev,
         [sessionId]: { 
           songs: songsWithVotes,
-          ownerId: sessionInfo.user_id
+          ownerId: sessionInfo.user_id,
+          name: sessionInfo.name
         }
       }));
 
@@ -379,7 +383,7 @@ export default function DJSessionApp() {
       // Fallback to empty session
       setSessions(prev => ({
         ...prev,
-        [sessionId]: { songs: [], ownerId: null }
+        [sessionId]: { songs: [], ownerId: null, name: null }
       }));
     }
   };
@@ -483,6 +487,7 @@ export default function DJSessionApp() {
     if (!user) return;
 
     const sessionId = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const sessionName = newSessionName.trim() || `Session ${sessionId}`;
 
     try {
       // Save session to Supabase
@@ -490,7 +495,8 @@ export default function DJSessionApp() {
         .from('sessions')
         .insert({
           user_id: user.id,
-          session_id: sessionId
+          session_id: sessionId,
+          name: sessionName
         });
 
       if (error) throw error;
@@ -498,10 +504,11 @@ export default function DJSessionApp() {
       // Update local state
       setSessions(prev => ({
         ...prev,
-        [sessionId]: { songs: [], ownerId: user.id }
+        [sessionId]: { songs: [], ownerId: user.id, name: sessionName }
       }));
 
       setCurrentSessionId(sessionId);
+      setNewSessionName('');
       setView('session');
 
       // Reload user sessions
@@ -525,6 +532,68 @@ export default function DJSessionApp() {
   };
 
 
+
+  const updateSessionName = async (sessionId, newName) => {
+    if (!user) return;
+
+    const session = sessions[sessionId];
+    if (!session || session.ownerId !== user.id) {
+      alert('You can only edit your own sessions.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('sessions')
+        .update({ name: newName.trim() || null })
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setSessions(prev => ({
+        ...prev,
+        [sessionId]: {
+          ...prev[sessionId],
+          name: newName.trim() || null
+        }
+      }));
+
+      // Update userSessions
+      setUserSessions(prev => prev.map(s => 
+        s.session_id === sessionId 
+          ? { ...s, name: newName.trim() || null }
+          : s
+      ));
+
+      // Update otherSessions if it's in there
+      setOtherSessions(prev => prev.map(s => 
+        s.session_id === sessionId 
+          ? { ...s, name: newName.trim() || null }
+          : s
+      ));
+
+      setEditingSessionName(false);
+    } catch (error) {
+      console.error('Error updating session name:', error);
+      alert('Failed to update session name. Please try again.');
+    }
+  };
+
+  const startEditingSessionName = () => {
+    setEditingSessionNameValue(currentSession?.name || '');
+    setEditingSessionName(true);
+  };
+
+  const cancelEditingSessionName = () => {
+    setEditingSessionName(false);
+    setEditingSessionNameValue('');
+  };
+
+  const saveSessionName = () => {
+    updateSessionName(currentSessionId, editingSessionNameValue);
+  };
 
   const getSessionLink = () => {
 
@@ -770,6 +839,8 @@ export default function DJSessionApp() {
   const openSession = (sessionId) => {
     setCurrentSessionId(sessionId);
     setView('session');
+    setEditingSessionName(false);
+    setEditingSessionNameValue('');
     window.history.pushState({}, '', `?session=${sessionId}`);
     loadSessionData(sessionId);
   };
@@ -777,6 +848,8 @@ export default function DJSessionApp() {
   const goHome = () => {
     setView('home');
     setCurrentSessionId('');
+    setEditingSessionName(false);
+    setEditingSessionNameValue('');
     window.history.pushState({}, '', window.location.pathname);
   };
 
@@ -809,12 +882,22 @@ export default function DJSessionApp() {
           </div>
 
           <div className="flex flex-col items-center gap-6 mb-8">
-            <button
-              onClick={createSession}
-              className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all transform hover:scale-105 shadow-lg"
-            >
-              Create DJ Session
-            </button>
+            <div className="w-full max-w-md">
+              <input
+                type="text"
+                value={newSessionName}
+                onChange={(e) => setNewSessionName(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && createSession()}
+                placeholder="Session Name (optional)"
+                className="w-full px-4 py-3 rounded-lg bg-white bg-opacity-20 text-white placeholder-purple-200 border border-purple-300 border-opacity-30 focus:outline-none focus:ring-2 focus:ring-purple-400 mb-3"
+              />
+              <button
+                onClick={createSession}
+                className="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all transform hover:scale-105 shadow-lg"
+              >
+                Create DJ Session
+              </button>
+            </div>
 
             <button
               onClick={handleLogout}
@@ -854,7 +937,12 @@ export default function DJSessionApp() {
                             <Music className="w-6 h-6 text-purple-300" />
                           </div>
                           <div className="flex-1">
-                            <h3 className="text-white font-semibold text-lg">Session: {session.session_id}</h3>
+                            <h3 className="text-white font-semibold text-lg">
+                              {session.name || `Session ${session.session_id}`}
+                            </h3>
+                            <p className="text-purple-300 text-xs">
+                              ID: {session.session_id}
+                            </p>
                             <p className="text-purple-200 text-sm flex items-center gap-2 mt-1">
                               <Users className="w-4 h-4" />
                               {songCount} {songCount === 1 ? 'request' : 'requests'}
@@ -912,7 +1000,12 @@ export default function DJSessionApp() {
                             <Globe className="w-6 h-6 text-blue-300" />
                           </div>
                           <div className="flex-1">
-                            <h3 className="text-white font-semibold text-lg">Session: {session.session_id}</h3>
+                            <h3 className="text-white font-semibold text-lg">
+                              {session.name || `Session ${session.session_id}`}
+                            </h3>
+                            <p className="text-purple-300 text-xs">
+                              ID: {session.session_id}
+                            </p>
                             <p className="text-purple-200 text-sm flex items-center gap-2 mt-1">
                               <Users className="w-4 h-4" />
                               {songCount} {songCount === 1 ? 'request' : 'requests'}
@@ -968,11 +1061,58 @@ export default function DJSessionApp() {
 
               <Music className="w-8 h-8 text-purple-300" />
 
-              <div>
+              <div className="flex-1">
+                {editingSessionName && currentSession?.ownerId === user?.id ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={editingSessionNameValue}
+                      onChange={(e) => setEditingSessionNameValue(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') saveSessionName();
+                        if (e.key === 'Escape') cancelEditingSessionName();
+                      }}
+                      autoFocus
+                      className="text-2xl font-bold text-white bg-white bg-opacity-20 px-3 py-1 rounded-lg border border-purple-300 border-opacity-30 focus:outline-none focus:ring-2 focus:ring-purple-400 flex-1"
+                      placeholder="Session name"
+                    />
+                    <button
+                      onClick={saveSessionName}
+                      className="bg-green-500 hover:bg-green-600 text-white p-2 rounded-lg transition-all"
+                      title="Save"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={cancelEditingSessionName}
+                      className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition-all"
+                      title="Cancel"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-2xl font-bold text-white">
+                      {currentSession?.name || `Session ${currentSessionId}`}
+                    </h2>
+                    {currentSession?.ownerId === user?.id && (
+                      <button
+                        onClick={startEditingSessionName}
+                        className="bg-white bg-opacity-10 hover:bg-opacity-20 text-white p-1 rounded transition-all"
+                        title="Edit session name"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
 
-                <h2 className="text-2xl font-bold text-white">Session: {currentSessionId}</h2>
+                <p className="text-purple-300 text-xs">
+                  ID: {currentSessionId}
+                </p>
 
-                <p className="text-purple-200 text-sm flex items-center gap-1">
+                <p className="text-purple-200 text-sm flex items-center gap-1 mt-1">
 
                   <Users className="w-4 h-4" />
 
