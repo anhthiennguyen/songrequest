@@ -616,6 +616,22 @@ export default function DJSessionApp() {
   const addSong = async () => {
     if (!newSongName.trim() || !currentSessionId) return;
 
+    const sessionData = sessions[currentSessionId];
+    const totalRequests = sessionData?.songs?.length || 0;
+
+    // If there are more than 10 songs in this session, require the user to have
+    // upvoted at least 5 songs in this session before they can request any songs.
+    if (totalRequests > 10 && user?.id) {
+      const userVotesInSession = (sessionData.songs || []).reduce((count, song) => {
+        return count + (song.voters.includes(user.id) ? 1 : 0);
+      }, 0);
+
+      if (userVotesInSession < 5) {
+        alert('There are already more than 10 songs requested in this session. You must upvote at least 5 songs in this session before requesting another song.');
+        return;
+      }
+    }
+
     try {
       // Save song to Supabase
       const { data, error } = await supabase
@@ -1214,6 +1230,9 @@ export default function DJSessionApp() {
           <h3 className="text-xl font-bold text-white mb-4">Request a Song</h3>
 
           <div className="flex flex-col gap-3">
+            <p className="text-purple-200 text-sm">
+              Note: Once there are more than 10 songs requested in this session, you must upvote at least 5 songs in this session before you can request another song.
+            </p>
             <div className="flex gap-2">
               <input
 
