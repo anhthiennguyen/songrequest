@@ -1,5 +1,10 @@
 # DJ Session - Song Request App
 
+npm run build
+git add docs/
+git commit -m "Rebuild with session name editing features"
+git push origin main
+
 A modern React application for managing DJ sessions where users can request songs and vote on them.
 
 ## Features
