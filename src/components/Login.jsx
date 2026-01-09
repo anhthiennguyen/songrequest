@@ -96,6 +96,10 @@ export default function Login({ onLogin }) {
               <Disc3 className="w-16 h-16 text-purple-300" />
             </div>
             <h1 className="text-4xl font-bold text-white mb-2">Song Request</h1>
+            <p className="text-purple-200 text-sm mb-3 max-w-sm mx-auto">
+              No more playing requests that only one person knows—
+              See what everyone wants to hear!
+            </p>
             <p className="text-purple-200">
               Sign in to continue
             </p>
@@ -167,6 +171,10 @@ export default function Login({ onLogin }) {
             <Disc3 className="w-16 h-16 text-purple-300" />
           </div>
           <h1 className="text-4xl font-bold text-white mb-2">Song Request</h1>
+          <p className="text-purple-200 text-sm mb-3 max-w-sm mx-auto">
+            No more playing requests that only one person knows—
+            See what everyone wants to hear!
+          </p>
           <p className="text-purple-200">
             {isSignUp ? 'Create your account' : 'Sign in to continue'}
           </p>
