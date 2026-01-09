@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Music, Share2, Plus, ChevronUp, Users, LogOut, Clock, ArrowLeft } from 'lucide-react';
+import { Music, Share2, Plus, ChevronUp, Users, LogOut, Clock, ArrowLeft, Trash2 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import Login from './components/Login';
 
@@ -81,9 +81,18 @@ export default function DJSessionApp() {
 
   // Load session data (songs and votes) from Supabase
   const loadSessionData = async (sessionId) => {
-    if (sessions[sessionId]) return; // Already loaded
+    if (sessions[sessionId]?.ownerId) return; // Already loaded with owner info
 
     try {
+      // Load session info to get owner
+      const { data: sessionInfo, error: sessionError } = await supabase
+        .from('sessions')
+        .select('user_id')
+        .eq('session_id', sessionId)
+        .single();
+
+      if (sessionError) throw sessionError;
+
       // Load songs
       const { data: songsData, error: songsError } = await supabase
         .from('songs')
@@ -116,7 +125,10 @@ export default function DJSessionApp() {
 
       setSessions(prev => ({
         ...prev,
-        [sessionId]: { songs: songsWithVotes }
+        [sessionId]: { 
+          songs: songsWithVotes,
+          ownerId: sessionInfo.user_id
+        }
       }));
 
       // Set up real-time subscription for this session
@@ -126,7 +138,7 @@ export default function DJSessionApp() {
       // Fallback to empty session
       setSessions(prev => ({
         ...prev,
-        [sessionId]: { songs: [] }
+        [sessionId]: { songs: [], ownerId: null }
       }));
     }
   };
@@ -166,7 +178,10 @@ export default function DJSessionApp() {
 
             setSessions(prev => ({
               ...prev,
-              [sessionId]: { songs: songsWithVotes }
+              [sessionId]: { 
+                ...prev[sessionId],
+                songs: songsWithVotes 
+              }
             }));
           }
         }
@@ -205,7 +220,10 @@ export default function DJSessionApp() {
 
             setSessions(prev => ({
               ...prev,
-              [sessionId]: { songs: songsWithVotes }
+              [sessionId]: { 
+                ...prev[sessionId],
+                songs: songsWithVotes 
+              }
             }));
           }
         }
@@ -239,7 +257,7 @@ export default function DJSessionApp() {
       // Update local state
       setSessions(prev => ({
         ...prev,
-        [sessionId]: { songs: [] }
+        [sessionId]: { songs: [], ownerId: user.id }
       }));
 
       setCurrentSessionId(sessionId);
@@ -333,46 +351,163 @@ export default function DJSessionApp() {
     const currentSession = sessions[currentSessionId];
     const song = currentSession?.songs.find(s => s.id === songId);
     
-    if (!song || song.voters.includes(user.id)) return;
+    if (!song) return;
+
+    const hasVoted = song.voters.includes(user.id);
 
     try {
-      // Save vote to Supabase
-      const { error } = await supabase
-        .from('votes')
-        .insert({
-          song_id: songId,
-          user_id: user.id
+      if (hasVoted) {
+        // Remove vote from Supabase
+        const { error } = await supabase
+          .from('votes')
+          .delete()
+          .eq('song_id', songId)
+          .eq('user_id', user.id);
+
+        if (error) throw error;
+
+        // Update local state (real-time will also update this)
+        setSessions(prev => {
+          const session = prev[currentSessionId];
+          const updatedSongs = session.songs.map(s => {
+            if (s.id === songId) {
+              return {
+                ...s,
+                votes: s.votes - 1,
+                voters: s.voters.filter(v => v !== user.id)
+              };
+            }
+            return s;
+          });
+
+          return {
+            ...prev,
+            [currentSessionId]: {
+              ...session,
+              songs: updatedSongs.sort((a, b) => b.votes - a.votes)
+            }
+          };
         });
+      } else {
+        // Save vote to Supabase
+        const { error } = await supabase
+          .from('votes')
+          .insert({
+            song_id: songId,
+            user_id: user.id
+          });
 
-      if (error) {
-        // If it's a duplicate vote error, that's okay
-        if (error.code !== '23505') throw error;
+        if (error) {
+          // If it's a duplicate vote error, that's okay
+          if (error.code !== '23505') throw error;
+        }
+
+        // Update local state (real-time will also update this)
+        setSessions(prev => {
+          const session = prev[currentSessionId];
+          const updatedSongs = session.songs.map(s => {
+            if (s.id === songId) {
+              return {
+                ...s,
+                votes: s.votes + 1,
+                voters: [...s.voters, user.id]
+              };
+            }
+            return s;
+          });
+
+          return {
+            ...prev,
+            [currentSessionId]: {
+              ...session,
+              songs: updatedSongs.sort((a, b) => b.votes - a.votes)
+            }
+          };
+        });
       }
+    } catch (error) {
+      console.error('Error toggling vote:', error);
+      alert('Failed to update vote. Please try again.');
+    }
+  };
 
-      // Update local state (real-time will also update this)
+  const deleteSession = async (sessionId) => {
+    if (!user) return;
+
+    const session = sessions[sessionId];
+    if (!session || session.ownerId !== user.id) {
+      alert('You can only delete your own sessions.');
+      return;
+    }
+
+    if (!confirm('Are you sure you want to delete this session? This will delete all songs and votes in this session.')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('sessions')
+        .delete()
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      // Remove from local state
+      setSessions(prev => {
+        const newSessions = { ...prev };
+        delete newSessions[sessionId];
+        return newSessions;
+      });
+
+      // Remove from userSessions
+      setUserSessions(prev => prev.filter(s => s.session_id !== sessionId));
+
+      // If we're currently viewing this session, go home
+      if (currentSessionId === sessionId) {
+        goHome();
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error);
+      alert('Failed to delete session. Please try again.');
+    }
+  };
+
+  const deleteSong = async (songId) => {
+    if (!user || !currentSessionId) return;
+
+    const currentSession = sessions[currentSessionId];
+    if (!currentSession || currentSession.ownerId !== user.id) {
+      alert('Only the session owner can delete songs.');
+      return;
+    }
+
+    if (!confirm('Are you sure you want to delete this song?')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('songs')
+        .delete()
+        .eq('id', songId);
+
+      if (error) throw error;
+
+      // Update local state (real-time will also update this, but this provides instant feedback)
       setSessions(prev => {
         const session = prev[currentSessionId];
-        const updatedSongs = session.songs.map(s => {
-          if (s.id === songId) {
-            return {
-              ...s,
-              votes: s.votes + 1,
-              voters: [...s.voters, user.id]
-            };
-          }
-          return s;
-        });
-
         return {
           ...prev,
           [currentSessionId]: {
-            songs: updatedSongs.sort((a, b) => b.votes - a.votes)
+            ...session,
+            songs: session.songs.filter(s => s.id !== songId)
           }
         };
       });
     } catch (error) {
-      console.error('Error upvoting song:', error);
-      alert('Failed to vote. Please try again.');
+      console.error('Error deleting song:', error);
+      alert('Failed to delete song. Please try again.');
     }
   };
 
@@ -484,15 +619,27 @@ export default function DJSessionApp() {
                             </p>
                           </div>
                         </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openSession(session.session_id);
-                          }}
-                          className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg transition-all"
-                        >
-                          Open
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openSession(session.session_id);
+                            }}
+                            className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg transition-all"
+                          >
+                            Open
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteSession(session.session_id);
+                            }}
+                            className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-3 rounded-lg transition-all flex items-center gap-1"
+                            title="Delete session"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -545,6 +692,16 @@ export default function DJSessionApp() {
             </div>
 
             <div className="flex items-center gap-2">
+              {currentSession?.ownerId === user?.id && (
+                <button
+                  onClick={() => deleteSession(currentSessionId)}
+                  className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-all"
+                  title="Delete session"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Session
+                </button>
+              )}
               <button
 
                 onClick={copyLink}
@@ -679,25 +836,36 @@ export default function DJSessionApp() {
 
                   </div>
 
-                  <button
+                  <div className="flex items-center gap-2">
+                    {currentSession?.ownerId === user?.id && (
+                      <button
+                        onClick={() => deleteSong(song.id)}
+                        className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-3 rounded-lg transition-all flex items-center gap-1"
+                        title="Delete song"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button
 
-                    onClick={() => upvoteSong(song.id)}
+                      onClick={() => upvoteSong(song.id)}
 
-                    disabled={song.voters.includes(user?.id)}
+                      className={`font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-all ${
+                        song.voters.includes(user?.id)
+                          ? 'bg-green-500 hover:bg-green-600 transform hover:scale-105'
+                          : 'bg-purple-500 hover:bg-purple-600 transform hover:scale-105'
+                      } text-white`}
 
-                    className={`font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-all ${
-                      song.voters.includes(user?.id)
-                        ? 'bg-gray-500 cursor-not-allowed opacity-50'
-                        : 'bg-purple-500 hover:bg-purple-600 transform hover:scale-105'
-                    } text-white`}
+                      title={song.voters.includes(user?.id) ? 'Click to remove your vote' : 'Click to vote'}
 
-                  >
+                    >
 
-                    <ChevronUp className="w-5 h-5" />
+                      <ChevronUp className="w-5 h-5" />
 
-                    <span>{song.votes}</span>
+                      <span>{song.votes}</span>
 
-                  </button>
+                    </button>
+                  </div>
 
                 </div>
 

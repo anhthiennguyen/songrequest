@@ -26,8 +26,7 @@ export default function Login({ onLogin }) {
         if (signUpError) throw signUpError
 
         if (data.user) {
-          // setMessage('Account created! Please check your email to verify your account.')
-          onLogin(data.user)
+          setMessage('Account created! Please check your email to verify your account.')
         }
       } else {
         const { data, error: signInError } = await supabase.auth.signInWithPassword({

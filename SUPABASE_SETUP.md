@@ -44,6 +44,11 @@ CREATE POLICY "Anyone can view sessions by session_id"
   ON sessions FOR SELECT
   USING (true);
 
+-- Policy: Users can delete their own sessions
+CREATE POLICY "Users can delete their own sessions"
+  ON sessions FOR DELETE
+  USING (auth.uid() = user_id);
+
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -93,6 +98,17 @@ CREATE POLICY "Authenticated users can create songs"
 CREATE POLICY "Users can delete their own songs"
   ON songs FOR DELETE
   USING (auth.uid() = created_by);
+
+-- Policy: Session owners can delete any song in their session
+CREATE POLICY "Session owners can delete songs in their sessions"
+  ON songs FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM sessions
+      WHERE sessions.session_id = songs.session_id
+      AND sessions.user_id = auth.uid()
+    )
+  );
 ```
 
 ### 3. `votes` Table
