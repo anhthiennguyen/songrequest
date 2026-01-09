@@ -758,13 +758,50 @@ export default function DJSessionApp() {
     }
 
     try {
-      const { error } = await supabase
+      // First verify the session exists and belongs to the user
+      const sessionInList = userSessions.find(s => s.session_id === sessionId);
+      if (!sessionInList) {
+        console.error('Session not found in userSessions:', sessionId);
+        alert('Session not found.');
+        return;
+      }
+
+      console.log('Found session to delete:', sessionInList);
+      
+      // Try deleting by session_id only (it's unique, RLS will check user_id automatically)
+      const response = await supabase
         .from('sessions')
         .delete()
-        .eq('session_id', sessionId)
-        .eq('user_id', user.id);
+        .eq('session_id', sessionId);
 
-      if (error) throw error;
+      console.log('Delete response:', response);
+
+      if (response.error) {
+        console.error('Supabase delete error:', response.error);
+        throw response.error;
+      }
+
+      // Verify the session was actually deleted by checking if it still exists
+      // Wait a moment for the delete to propagate
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id)
+        .single();
+
+      // If we get data back, the session still exists (delete failed)
+      if (verifyData) {
+        console.error('Session still exists after delete! VerifyData:', verifyData);
+        console.error('This indicates an RLS policy issue. The DELETE policy may not be set up correctly.');
+        alert('Failed to delete session. The session still exists. Please check your Supabase RLS DELETE policy for the sessions table.');
+        return;
+      }
+
+      // If we get an error (like "not found"), that's good - the session was deleted
+      console.log('Session successfully deleted (verified by absence).');
 
       // Remove from local state
       setSessions(prev => {
@@ -782,7 +819,7 @@ export default function DJSessionApp() {
       }
     } catch (error) {
       console.error('Error deleting session:', error);
-      alert('Failed to delete session. Please try again.');
+      alert(`Failed to delete session: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -800,12 +837,12 @@ export default function DJSessionApp() {
     }
 
     try {
-      const { error } = await supabase
+      const response = await supabase
         .from('songs')
         .delete()
         .eq('id', songId);
 
-      if (error) throw error;
+      if (response.error) throw response.error;
 
       // Update local state (real-time will also update this, but this provides instant feedback)
       setSessions(prev => {
