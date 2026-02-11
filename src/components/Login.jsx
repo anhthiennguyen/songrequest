@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
-import { Disc3, Mail, Lock, LogIn, UserPlus } from 'lucide-react'
+import { Disc3, Mail, Lock, LogIn, UserPlus, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, isModal = false, onClose }) {
   const [showRegularLogin, setShowRegularLogin] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -11,18 +11,26 @@ export default function Login({ onLogin }) {
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
 
+  const getRedirectUrl = () => {
+    return `${window.location.origin}${window.location.pathname}${window.location.search}`
+  }
+
   const handleDiscordLogin = async () => {
     setLoading(true)
     setError(null)
-    
+
+    if (window.location.search) {
+      sessionStorage.setItem('redirectAfterLogin', window.location.search)
+    }
+
     try {
       const { error: discordError } = await supabase.auth.signInWithOAuth({
         provider: 'discord',
         options: {
-          redirectTo: `${window.location.origin}${window.location.pathname}`
+          redirectTo: getRedirectUrl()
         }
       })
-      
+
       if (discordError) throw discordError
     } catch (err) {
       setError(err.message || 'Failed to sign in with Discord')
@@ -33,15 +41,19 @@ export default function Login({ onLogin }) {
   const handleGoogleLogin = async () => {
     setLoading(true)
     setError(null)
-    
+
+    if (window.location.search) {
+      sessionStorage.setItem('redirectAfterLogin', window.location.search)
+    }
+
     try {
       const { error: googleError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}${window.location.pathname}`
+          redirectTo: getRedirectUrl()
         }
       })
-      
+
       if (googleError) throw googleError
     } catch (err) {
       setError(err.message || 'Failed to sign in with Google')
@@ -86,23 +98,159 @@ export default function Login({ onLogin }) {
     }
   }
 
-  // Main Discord login page
+  const handleBackdropClick = (e) => {
+    if (isModal && onClose && e.target === e.currentTarget) {
+      onClose()
+    }
+  }
+
+  // ── Compact modal popup ──────────────────────────────────────────────
+  if (isModal) {
+    if (!showRegularLogin) {
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={handleBackdropClick}>
+          <div className="bg-gray-900/95 backdrop-blur-lg rounded-xl p-5 shadow-2xl w-full max-w-xs relative border border-purple-500/30">
+            <button onClick={onClose} className="absolute top-3 right-3 text-purple-300 hover:text-white transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+
+            <h3 className="text-lg font-bold text-white mb-1">Sign In</h3>
+            <p className="text-purple-300 text-xs mb-4">Sign in to request and vote on songs</p>
+
+            {error && (
+              <div className="mb-3 bg-red-500/20 border border-red-500/50 rounded-lg p-2 text-red-200 text-xs">
+                {error}
+              </div>
+            )}
+
+            <button
+              onClick={handleDiscordLogin}
+              disabled={loading}
+              className="w-full bg-[#5865F2] hover:bg-[#4752C4] disabled:bg-[#4752C4] disabled:cursor-not-allowed text-white font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-all shadow-lg mb-2.5 text-sm"
+            >
+              {loading ? 'Loading...' : (
+                <>
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+                  </svg>
+                  Continue with Discord
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleGoogleLogin}
+              disabled={loading}
+              className="w-full bg-white hover:bg-gray-100 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-900 font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-all shadow-lg mb-3 text-sm border border-gray-200"
+            >
+              {loading ? 'Loading...' : (
+                <>
+                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-4 h-4" />
+                  Continue with Google
+                </>
+              )}
+            </button>
+
+            <div className="text-center">
+              <button
+                onClick={() => setShowRegularLogin(true)}
+                className="text-purple-300 hover:text-white text-xs transition-colors underline"
+              >
+                Use email instead
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // Modal email/password form
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={handleBackdropClick}>
+        <div className="bg-gray-900/95 backdrop-blur-lg rounded-xl p-5 shadow-2xl w-full max-w-xs relative border border-purple-500/30">
+          <button onClick={onClose} className="absolute top-3 right-3 text-purple-300 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+
+          <h3 className="text-lg font-bold text-white mb-1">
+            {isSignUp ? 'Create Account' : 'Sign In'}
+          </h3>
+          <p className="text-purple-300 text-xs mb-3">Sign in to request and vote on songs</p>
+
+          <form onSubmit={handleAuth} className="space-y-3">
+            <div>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-300" />
+                <input
+                  type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email" required
+                  className="w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-white/10 text-white placeholder-purple-300 border border-purple-400/30 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                />
+              </div>
+            </div>
+            <div>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-300" />
+                <input
+                  type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password" required minLength={6}
+                  className="w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-white/10 text-white placeholder-purple-300 border border-purple-400/30 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                />
+              </div>
+            </div>
+
+            {error && (
+              <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-2 text-red-200 text-xs">{error}</div>
+            )}
+            {message && (
+              <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-2 text-green-200 text-xs">{message}</div>
+            )}
+
+            <button
+              type="submit" disabled={loading}
+              className="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-purple-700 disabled:cursor-not-allowed text-white font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-all shadow-lg text-sm"
+            >
+              {loading ? 'Loading...' : (
+                <>
+                  {isSignUp ? <><UserPlus className="w-4 h-4" /> Sign Up</> : <><LogIn className="w-4 h-4" /> Sign In</>}
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-3 text-center space-y-1">
+            <button
+              onClick={() => { setIsSignUp(!isSignUp); setError(null); setMessage(null) }}
+              className="text-purple-300 hover:text-white text-xs transition-colors"
+            >
+              {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+            </button>
+            <div>
+              <button onClick={() => setShowRegularLogin(false)} className="text-purple-300 hover:text-white text-xs transition-colors">
+                &larr; Back to Discord login
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Full page login (non-modal) ──────────────────────────────────────
   if (!showRegularLogin) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-950 via-indigo-950 to-blue-950 flex items-center justify-center p-4">
-        <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl w-full max-w-md">
+        <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl w-full max-w-md relative">
           <div className="text-center mb-8">
             <div className="mb-4 flex justify-center">
               <Disc3 className="w-16 h-16 text-purple-300" />
             </div>
             <h1 className="text-4xl font-bold text-white mb-2">Song Request</h1>
             <p className="text-purple-200 text-sm mb-3 max-w-sm mx-auto">
-              No more playing requests that only one person knows—
+              No more playing requests that only one person knows&mdash;
               See what everyone wants to hear!
             </p>
-            <p className="text-purple-200">
-              Sign in to continue
-            </p>
+            <p className="text-purple-200">Sign in to continue</p>
           </div>
 
           {error && (
@@ -110,7 +258,7 @@ export default function Login({ onLogin }) {
               {error}
             </div>
           )}
-          
+
           <button
             onClick={handleDiscordLogin}
             disabled={loading}
@@ -162,17 +310,17 @@ export default function Login({ onLogin }) {
     )
   }
 
-  // Regular email/password login form
+  // Regular email/password login form (full page)
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-950 via-indigo-950 to-blue-950 flex items-center justify-center p-4">
-      <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl w-full max-w-md">
+      <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl w-full max-w-md relative">
         <div className="text-center mb-8">
           <div className="mb-4 flex justify-center">
             <Disc3 className="w-16 h-16 text-purple-300" />
           </div>
           <h1 className="text-4xl font-bold text-white mb-2">Song Request</h1>
           <p className="text-purple-200 text-sm mb-3 max-w-sm mx-auto">
-            No more playing requests that only one person knows—
+            No more playing requests that only one person knows&mdash;
             See what everyone wants to hear!
           </p>
           <p className="text-purple-200">
@@ -252,7 +400,7 @@ export default function Login({ onLogin }) {
             )}
           </button>
         </form>
-      
+
         <div className="mt-6 text-center space-y-2">
           <button
             onClick={() => {
@@ -271,7 +419,7 @@ export default function Login({ onLogin }) {
               onClick={() => setShowRegularLogin(false)}
               className="text-purple-200 hover:text-white text-sm transition-colors"
             >
-              ← Back to Discord login
+              &larr; Back to Discord login
             </button>
           </div>
         </div>

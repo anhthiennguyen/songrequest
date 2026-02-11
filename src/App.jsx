@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Disc3, Share2, Plus, ThumbsUp, Users, LogOut, Clock, ArrowLeft, Trash2, Globe, Edit2, Check, X } from 'lucide-react';
+import { Disc3, Share2, Plus, ThumbsUp, Users, LogOut, LogIn, Clock, ArrowLeft, Trash2, Globe, Edit2, Check, X } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import Login from './components/Login';
 
@@ -24,6 +24,8 @@ export default function DJSessionApp() {
   const [newArtistName, setNewArtistName] = useState('');
   const [editingSessionName, setEditingSessionName] = useState(false);
   const [editingSessionNameValue, setEditingSessionNameValue] = useState('');
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [sessionUsers, setSessionUsers] = useState([]);
 
 
 
@@ -287,15 +289,14 @@ export default function DJSessionApp() {
     loadOtherSessions();
   }, [view, user]);
 
-  // Handle URL session parameter and load session data
+  // Handle URL session parameter and load session data (runs after initial auth check)
   useEffect(() => {
-    if (!user) return;
+    if (loading) return;
 
-    // Check if there's a stored redirect URL from before login
+    // Check if there's a stored redirect URL from before OAuth login
     const storedRedirect = sessionStorage.getItem('redirectAfterLogin');
     if (storedRedirect) {
       sessionStorage.removeItem('redirectAfterLogin');
-      // Restore the URL with the query parameters
       window.history.replaceState({}, '', window.location.pathname + storedRedirect);
     }
 
@@ -306,8 +307,58 @@ export default function DJSessionApp() {
       setCurrentSessionId(sessionId);
       setView('session');
       loadSessionData(sessionId);
+      if (!user) {
+        setShowLoginModal(true);
+      }
+    }
+  }, [loading]);
+
+  // Close login modal when user logs in
+  useEffect(() => {
+    if (user) {
+      setShowLoginModal(false);
     }
   }, [user]);
+
+  const currentSession = sessions[currentSessionId];
+
+  // Fetch profiles of users who have this session (created songs or voted)
+  useEffect(() => {
+    if (!currentSession?.songs || !currentSessionId) {
+      setSessionUsers([]);
+      return;
+    }
+
+    // Collect unique user IDs from session owner, song creators, and voters
+    const userIds = new Set();
+    if (currentSession.ownerId) userIds.add(currentSession.ownerId);
+    currentSession.songs.forEach(song => {
+      if (song.created_by) userIds.add(song.created_by);
+      song.voters.forEach(v => userIds.add(v));
+    });
+
+    const ids = [...userIds].filter(Boolean);
+    if (ids.length === 0) {
+      setSessionUsers([]);
+      return;
+    }
+
+    const fetchProfiles = async () => {
+      try {
+        const { data, error } = await supabase.rpc('get_user_profiles', {
+          user_ids: ids
+        });
+        if (error) throw error;
+        setSessionUsers(data || []);
+      } catch (err) {
+        // Fallback if the RPC function doesn't exist yet: show IDs only
+        console.error('Error fetching user profiles (have you created the get_user_profiles function?):', err);
+        setSessionUsers(ids.map(id => ({ id, display_name: null, avatar_url: null })));
+      }
+    };
+
+    fetchProfiles();
+  }, [currentSession?.songs, currentSession?.ownerId, currentSessionId]);
 
   // Load session data (songs and votes) from Supabase
   const loadSessionData = async (sessionId) => {
@@ -617,6 +668,10 @@ export default function DJSessionApp() {
 
 
   const addSong = async () => {
+    if (!user) {
+      setShowLoginModal(true);
+      return;
+    }
     if (!newSongName.trim() || !currentSessionId) return;
 
     const sessionData = sessions[currentSessionId];
@@ -680,7 +735,11 @@ export default function DJSessionApp() {
 
 
   const upvoteSong = async (songId) => {
-    if (!user || !currentSessionId) return;
+    if (!user) {
+      setShowLoginModal(true);
+      return;
+    }
+    if (!currentSessionId) return;
 
     const currentSession = sessions[currentSessionId];
     const song = currentSession?.songs.find(s => s.id === songId);
@@ -917,8 +976,6 @@ export default function DJSessionApp() {
     window.history.pushState({}, '', window.location.pathname);
   };
 
-  const currentSession = sessions[currentSessionId];
-
   // Show loading state
   if (loading) {
     return (
@@ -928,8 +985,8 @@ export default function DJSessionApp() {
     );
   }
 
-  // Show login screen if not authenticated
-  if (!user) {
+  // Show login screen if not authenticated and not viewing a session
+  if (!user && view !== 'session') {
     return <Login onLogin={setUser} />;
   }
 
@@ -1116,10 +1173,31 @@ export default function DJSessionApp() {
 
 
   return (
+    <>
+    {!user && showLoginModal && (
+      <Login isModal onLogin={setUser} onClose={() => setShowLoginModal(false)} />
+    )}
 
     <div className="min-h-screen bg-gradient-to-br from-purple-950 via-indigo-950 to-blue-950 p-4">
 
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-5xl mx-auto flex flex-col lg:flex-row gap-4">
+
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+
+        {!user && (
+          <div className="bg-purple-500 bg-opacity-20 backdrop-blur-lg rounded-2xl p-4 mb-6 shadow-2xl border border-purple-400 border-opacity-30 text-center">
+            <p className="text-white">
+              <button
+                onClick={() => setShowLoginModal(true)}
+                className="text-purple-300 hover:text-white underline font-semibold transition-colors"
+              >
+                Sign in
+              </button>
+              {' '}to request and vote on songs
+            </p>
+          </div>
+        )}
 
         <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-6 mb-6 shadow-2xl">
 
@@ -1214,19 +1292,23 @@ export default function DJSessionApp() {
 
               </button>
 
-              <button
-
-                onClick={handleLogout}
-
-                className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-all"
-
-              >
-
-                <LogOut className="w-4 h-4" />
-
-                Sign Out
-
-              </button>
+              {user ? (
+                <button
+                  onClick={handleLogout}
+                  className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-all"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowLoginModal(true)}
+                  className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-all"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Sign In
+                </button>
+              )}
 
             </div>
 
@@ -1381,10 +1463,42 @@ export default function DJSessionApp() {
 
         </div>
 
+        </div>{/* end main content */}
+
+        {/* Sidebar - Session Users */}
+        <div className="w-full lg:w-64 order-first lg:order-last flex-shrink-0">
+          <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-4 shadow-2xl lg:sticky lg:top-4">
+            <h3 className="text-base font-bold text-white mb-3 flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              Users
+              <span className="text-purple-300 font-normal text-xs">({sessionUsers.length})</span>
+            </h3>
+
+            {sessionUsers.length === 0 ? (
+              <p className="text-purple-300 text-xs">No users yet</p>
+            ) : (
+              <div className="flex lg:flex-col gap-3 lg:gap-2 overflow-x-auto lg:overflow-x-visible pb-1 lg:pb-0">
+                {sessionUsers.map((u, i) => (
+                  <div key={u.id || i} className="flex items-center gap-2 flex-shrink-0">
+                    {u.avatar_url ? (
+                      <img src={u.avatar_url} alt="" className="w-7 h-7 rounded-full flex-shrink-0" />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-purple-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                        {(u.display_name || '?')[0].toUpperCase()}
+                      </div>
+                    )}
+                    <span className="text-white text-sm truncate">{u.display_name || 'User'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
 
     </div>
-
+    </>
   );
 
 }
